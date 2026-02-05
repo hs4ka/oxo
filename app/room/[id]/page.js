@@ -22,6 +22,8 @@ export default function RoomPage() {
   const [youAre, setYouAre] = useState("Spectator");
   const [winner, setWinner] = useState("");
   const [players, setPlayers] = useState({ X: false, O: false });
+  const [connected, setConnected] = useState(false);
+  const [connectionError, setConnectionError] = useState(null);
 
   const socket = useMemo(() => {
     if (!roomId) return null;
@@ -33,6 +35,26 @@ export default function RoomPage() {
 
   useEffect(() => {
     if (!socket) return;
+
+    const onConnect = () => {
+      setConnected(true);
+      setConnectionError(null);
+    };
+    const onConnectError = () => {
+      setConnected(false);
+      setConnectionError("Can't reach game server. If you deployed to Vercel, deploy the server (e.g. Render) and set NEXT_PUBLIC_WS_URL.");
+    };
+    const onDisconnect = () => {
+      setConnected(false);
+    };
+
+    socket.on("connect", onConnect);
+    socket.on("connect_error", onConnectError);
+    socket.on("disconnect", onDisconnect);
+    if (socket.connected) {
+      setConnected(true);
+      setConnectionError(null);
+    }
 
     socket.on("room_joined", (payload) => {
       setYouAre(payload.role);
@@ -54,6 +76,9 @@ export default function RoomPage() {
     });
 
     return () => {
+      socket.off("connect", onConnect);
+      socket.off("connect_error", onConnectError);
+      socket.off("disconnect", onDisconnect);
       socket.disconnect();
     };
   }, [socket]);
@@ -68,7 +93,7 @@ export default function RoomPage() {
     socket.emit("reset_game");
   };
 
-  const canPlay = youAre === "X" || youAre === "O";
+  const canPlay = connected && (youAre === "X" || youAre === "O");
   const shareUrl = typeof window !== "undefined" ? window.location.href : "";
 
   return (
@@ -76,12 +101,17 @@ export default function RoomPage() {
       <div className="container">
         <section className="card fade-up">
           <h1 className="title">Room {roomId}</h1>
+          {connectionError && (
+            <div className="status" style={{ color: "var(--color-error, #c00)", marginBottom: 8 }}>
+              {connectionError}
+            </div>
+          )}
           <div className="status">{status}</div>
-          <div className="badge">You are: {youAre}</div>
+          <div className="badge">You are: {youAre}{!connected && " (not connected)"}</div>
           <div style={{ marginTop: 16 }}>
             <div className="board">
               {board.map((cell, index) => {
-                const isTurn = turn === youAre && !winner && cell === "";
+                const isTurn = connected && turn === youAre && !winner && cell === "";
                 return (
                   <button
                     key={index}
